@@ -1,0 +1,237 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>AOL Front-End Test</title>
+<script type="text/javascript" >
+var latitude;
+var longitude;
+var miles;
+var jsonString;
+var twitter_user;
+var initTweets = 5;
+//geo-location sucesss
+function success(position) {
+	latitude = position.coords.latitude;
+	longitude = position.coords.longitude;
+	loadTweets(twitter_user,latitude,longitude,miles);
+}
+
+function errorPos(){
+	alert('geo not supported');
+}
+
+function loadTweets(user,lat,longitude,miles){
+	var xmlhttp = new XMLHttpRequest();
+	var retVal = "";
+	xmlhttp.onreadystatechange=function(){
+		if(xmlhttp.readyState==4&&xmlhttp.status==200){
+			jsonString = xmlhttp.responseText;
+			fill_tweets(user,lat,longitude,miles);
+		}
+	}
+	xmlhttp.open("GET","tweets.txt",true);
+	xmlhttp.send();
+}
+
+function start_fetch(){
+	twitter_user = document.getElementById("twitter_user").value;
+	miles = document.getElementById("geo_miles").value;
+	if(twitter_user==""||twitter_user.length==0){
+		document.getElementById("console").innerHTML = "please type user name";
+		return;
+	}
+	if(miles==""||miles.length==0){
+		miles = "#";
+		loadTweets(twitter_user,"","",miles);
+	}else{
+		if(navigator.geolocation){
+			navigator.geolocation.getCurrentPosition(success, errorPos);
+		}else{
+			alert('geo-location not supported');
+			miles = "#";
+			loadTweets(twitter_user,"","",miles);
+		}
+	}
+}
+
+function fill_tweets(twitter_user,latitude,longitude,miles){
+	var str = "";
+	if(miles=="#") str = "twitter user_name " + twitter_user + " geo miles within " + miles;
+	else str = "twitter user_name " + twitter_user + " current lat:" + latitude
+	+ " longitude: " + longitude + " geo miles within " + miles ;
+	document.getElementById("console").innerHTML = str;
+	var tweets = eval('(' + jsonString + ')');
+	
+	var arr = new Array();
+	for(var i=0;i<tweets.results.length;i=i+1){
+		var item = {innerHTML:""};
+		item.innerHTML = "<font color='white'>"
+		+ tweets.results[i].text + "<br>" + tweets.results[i].created_at + "</" + "font>";
+		//alert(item.innerHTML);
+		arr.push(item);
+	}
+	var c=new Carousel({
+		container:"con",
+		configs:{
+			duration:800,
+			interval:25,
+			radius:[240,40]
+		},
+		items:arr
+	});
+}
+var setOptions=function(element,options){
+	for(var key in options){
+		element[key]=options[key];
+	}	
+}
+var bind=function(context,fun){
+	var arg=Array.prototype.slice.call(arguments,2);
+	return function(){
+		fun.apply(context,arg.concat(Array.prototype.slice.call(arguments)));	
+	}
+}
+Function.createDelegate = function(){
+	return function(){
+		this.onCreate.apply(this,arguments);
+	}
+}
+var Item =Function.createDelegate();
+var Carousel = Function.createDelegate();
+Item.prototype={
+	onCreate:function(parent,radians,tweetOptions){
+		var elem = document.createElement("div");
+		elem.style.position="absolute";
+		elem.style.background="black";
+		this.element=elem;
+		this.radians=radians;
+		this.parent=parent;
+		this.setAttributes(tweetOptions);
+		parent.element.appendChild(elem);
+		elem.onclick=bind(this,function(){
+			var rad=this.getRotateRadians();
+			this.parent.rotate(this.getRotateRadians());
+		});
+	},
+	setAttributes:function(options){
+		setOptions(this.element,options)
+	},
+	getRotateRadians:function(){
+		var r=this.radians%(Math.PI*2);
+		var tr=this.parent.targetRotate;
+		var target=tr-r;
+		var delta=target<-Math.PI?target+2*PI:target;
+		return delta;
+	},
+	update:function(deltaRadians){
+		this.radians=(this.radians+deltaRadians+2*Math.PI)%(Math.PI*2);
+		var opt=this.parent.options;
+		var radius=opt.radius;
+		var	center=opt.center;
+		var	itemSize=opt.itemSize;
+		var	_left=radius[0]*Math.cos(this.radians);
+		var	_top=radius[1]*Math.sin(this.radians);
+		var	zRadius=this.parent.zoomAxis?radius[1]:radius[0];
+		var	zFactor=this.parent.zoomAxis?_top:_left;   
+		var	zoom=(zFactor+zRadius*1.5)/(2.5*zRadius);
+		var	_width=itemSize[0]*zoom;
+		var	_height=itemSize[1]*zoom;
+		var	z=Math.floor(zoom*100);
+		var	xx=center[0]+_left-_width/2+'px';
+		var	yy=center[1]+_top-_height/2+ 200 + 'px';
+		var style=this.element.style;
+		style.left=xx;
+		style.top=yy;
+		style.width=_width+'px';
+		style.height=_height+'px';
+		style.zIndex=z;
+	}
+}
+
+Carousel.prototype={
+		onCreate:function(){
+			if(!arguments||!arguments[0].items){return;};
+			var argv = arguments[0];
+			var eachRadians = (2*Math.PI) / argv.items.length;
+			var elem = document.getElementById(argv.container);
+			this.element=elem;//container
+			this.setConfig(argv.configs);
+			this.timer=null;
+			this.flag=false;
+			var radius = this.options.radius;
+			this.items=[];//items array
+			this.zoomAxis=Math.abs(radius[0])>Math.abs(radius[1]);
+			this.targetRotate=(this.zoomAxis)?Math.PI/2:0;
+			for(var i=0;i<argv.items.length;i=i+1){
+				var _item=new Item(this,eachRadians*i,argv.items[i]);
+				this.items.push(_item);
+			}
+			this.rotate(this.targetRotate);
+		},
+		setConfig:function(opts){
+			this.options={
+				interval:20,
+				duration:1000,
+				center:[this.element.offsetWidth/2,this.element.offsetHeight/2],// x,y
+				radius:[200,50],  // x,y
+				itemSize:[200,120], //width,height
+				radiusX:200,
+				radiusY:50,
+				initRotate:Math.PI/-2,
+				easy:function(p){
+					return 1-Math.pow(1-p,3);
+				}
+			}
+			setOptions(this.options,opts);
+		},
+		rotate:function(radians){
+			if(this.flag){
+				clearInterval(this.timer);	
+			}
+			clearInterval(this.timer);
+			this.rotateRadians=radians;
+			this.timer=setInterval(bind(this,function(){this.update();}),this.options.interval);
+		},
+		update:function(){
+			var opt = this.options;
+			var _this = this;
+			var rad = this.rotateRadians;
+			clearInterval(this.timer);
+			this.flag=false;
+			for(var i=0;i<this.items.length;i=i+1){
+				this.items[i].update(rad);
+			}
+		}
+}
+</script>
+</head>
+<body>
+<form id="tweet_form" action="">
+<table>
+<tr>
+	<td>
+		Twitter User
+	</td>
+	<td>
+		<input type="text" id="twitter_user">
+	</td>
+	<td>
+		fetch tweet within
+	</td>
+	<td>
+		<input type="text" id="geo_miles"> miles
+	</td>
+</tr>
+<tr>
+	<td colspan="2">
+		<input type="button" id="fetch_button" value="fetch" onclick="start_fetch()">
+	</td>
+</tr>
+</table>
+</form>
+ <div id="console"></div>
+<div id="con" class="carouse" style="margin-top:200px"></div>
+
+</body>
+</html>
